@@ -183,7 +183,7 @@ sub post_accept_hook {
     };
 }
 
-sub dispatch_request {
+sub _dispatch_request {
     my ($self, $env) = @_;
 
     # Run PSGI apps
@@ -199,6 +199,10 @@ sub dispatch_request {
 sub process_request {
     my $self = shift;
     my $conn = $self->{server}->{client};
+    my $wrap = $self->{server}->{request_wrapper};
+
+    die "request_wrapper is defined but not a code reference"
+        if defined $wrap and not ref $wrap eq 'CODE';
 
     if ($conn->NS_proto eq 'TCP') {
         setsockopt($conn, IPPROTO_TCP, TCP_NODELAY, 1)
@@ -290,7 +294,12 @@ sub process_request {
 
         $self->_prepare_env($env);
 
-        $self->dispatch_request($env);
+        if (defined $wrap) {
+            $wrap->($conn, sub { $self->_dispatch_request($env); 1 });
+        }
+        else {
+            $self->_dispatch_request($env);
+        }
 
         DEBUG && warn "[$$] Request done\n";
 
